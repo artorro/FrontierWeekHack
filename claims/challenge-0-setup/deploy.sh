@@ -13,14 +13,22 @@ az config set extension.use_dynamic_install=yes_without_prompt --only-show-error
 az extension add --name application-insights --only-show-errors >/dev/null 2>&1 || true
 
 # --- Configuration -----------------------------------------------------------
-SUFFIX="${SUFFIX:-$(openssl rand -hex 4)}"
+current=$(az group list --query "[?starts_with(name, 'foundry-hackathon-rg-')].name | [0]" -o tsv)
+
+if [ -n "$current" ]; then
+    SUFFIX="${current##*-}"
+else
+    SUFFIX="${SUFFIX:-$(openssl rand -hex 4)}"
+fi
+
+echo "SUFFIX=$SUFFIX"
 RESOURCE_GROUP="${RESOURCE_GROUP:-foundry-hackathon-rg-$SUFFIX}"
 LOCATION="${LOCATION:-swedencentral}"
 FOUNDRY_RESOURCE_NAME="${FOUNDRY_RESOURCE_NAME:-foundry-hack-$SUFFIX}"
 PROJECT_NAME="${PROJECT_NAME:-claims-project}"
-MODEL_DEPLOYMENT_NAME="${MODEL_DEPLOYMENT_NAME:-gpt-5.4}"
-MODEL_NAME="${MODEL_NAME:-gpt-5.4}"
-MODEL_VERSION="${MODEL_VERSION:-2026-03-05}"
+MODEL_DEPLOYMENT_NAME="${MODEL_DEPLOYMENT_NAME:-gpt-5-mini}"
+MODEL_NAME="${MODEL_NAME:-gpt-5-mini}"
+MODEL_VERSION="${MODEL_VERSION:-2025-08-07}"
 LOG_ANALYTICS_NAME="${LOG_ANALYTICS_NAME:-foundry-hack-logs-$SUFFIX}"
 APP_INSIGHTS_NAME="${APP_INSIGHTS_NAME:-foundry-hack-insights-$SUFFIX}"
 
@@ -61,14 +69,21 @@ echo "Tags:              ${TAGS[*]}"
 echo ""
 
 # --- Resource Group ----------------------------------------------------------
-echo ">>> Creating resource group..."
-az group create \
-    --name "$RESOURCE_GROUP" \
-    --location "$LOCATION" \
-    --output none \
-    --tags "${TAGS[@]}"
+echo ">>> Checking resource group..."
 
-# --- AI Foundry Hub ----------------------------------------------------------
+if [ "$(az group exists --name "$RESOURCE_GROUP")" = "false" ]; then
+    echo ">>> Resource group does not exist. Creating..."
+
+    az group create \
+        --name "$RESOURCE_GROUP" \
+        --location "$LOCATION" \
+        --output none \
+        --tags "${TAGS[@]}"
+
+    echo ">>> Resource group created."
+else
+    echo ">>> Resource group already exists. Reusing it."
+fi
 echo ">>> Creating Microsoft Foundry Account resource (AIServices)..."
 SUBSCRIPTION_ID=$(az account show --query id -o tsv)
 az rest \
@@ -161,7 +176,7 @@ az monitor app-insights component create \
     --resource-group "$RESOURCE_GROUP" \
     --location "$LOCATION" \
     --workspace "$LOG_ANALYTICS_ID" \
-    --output none
+
 
 APP_INSIGHTS_CONN_STRING=$(az monitor app-insights component show \
     --app "$APP_INSIGHTS_NAME" \
